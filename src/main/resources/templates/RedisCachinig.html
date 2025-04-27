@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Redis Caching Demo</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+        .results { display: flex; justify-content: space-between; margin-top: 20px; }
+        .chart-container { height: 300px; }
+        button { padding: 10px; margin: 5px; cursor: pointer; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Redis Caching Performance Demo</h1>
+
+    <div>
+        <button id="fetchUncached">Fetch Book (Clear Cache First)</button>
+        <button id="fetchCached">Fetch Book (With Cache)</button>
+        <button id="clearCache">Clear Cache</button>
+    </div>
+
+    <div class="results">
+        <div>
+            <h3>Response Times (ms)</h3>
+            <ul id="timesList"></ul>
+        </div>
+        <div class="chart-container">
+            <canvas id="performanceChart"></canvas>
+        </div>
+    </div>
+
+    <div>
+        <h3>Cache Statistics</h3>
+        <div id="cacheStats"></div>
+    </div>
+</div>
+
+<script>
+    const bookId = 1;
+    let timesList = document.getElementById('timesList');
+    let chart;
+    let cachedTimes = [];
+    let uncachedTimes = [];
+
+    async function fetchBook(clearCacheFirst) {
+        if (clearCacheFirst) {
+            await fetch(`/api/books/cache`, { method: 'DELETE' });
+        }
+
+        const start = performance.now();
+        const response = await fetch(`/api/books/${bookId}`);
+        const data = await response.json();
+        const time = performance.now() - start;
+
+        const item = document.createElement('li');
+        item.textContent = `${clearCacheFirst ? 'Uncached' : 'Cached'}: ${time.toFixed(2)} ms`;
+        timesList.prepend(item);
+
+        if (clearCacheFirst) {
+            uncachedTimes.push(time);
+        } else {
+            cachedTimes.push(time);
+        }
+
+        updateChart();
+        fetchCacheStats();
+    }
+
+    async function fetchCacheStats() {
+        const response = await fetch('/api/cache/stats');
+        const stats = await response.json();
+
+        document.getElementById('cacheStats').innerHTML = `
+                Hits: ${stats.hits}<br>
+                Misses: ${stats.misses}<br>
+                Hit Ratio: ${(stats.ratio * 100).toFixed(2)}%
+            `;
+    }
+
+    function updateChart() {
+        const ctx = document.getElementById('performanceChart').getContext('2d');
+
+        if (chart) {
+            chart.destroy();
+        }
+
+        chart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: ['Uncached', 'Cached'],
+                datasets: [{
+                    label: 'Average Response Time (ms)',
+                    data: [
+                        uncachedTimes.length ? uncachedTimes.reduce((a, b) => a + b, 0) / uncachedTimes.length : 0,
+                        cachedTimes.length ? cachedTimes.reduce((a, b) => a + b, 0) / cachedTimes.length : 0
+                    ],
+                    backgroundColor: ['#ff6384', '#36a2eb']
+                }]
+            },
+            options: {
+                scales: {
+                    y: {
+                        beginAtZero: true
+                    }
+                }
+            }
+        });
+    }
+
+    document.getElementById('fetchUncached').addEventListener('click', () => fetchBook(true));
+    document.getElementById('fetchCached').addEventListener('click', () => fetchBook(false));
+    document.getElementById('clearCache').addEventListener('click', async () => {
+        await fetch(`/api/books/cache`, { method: 'DELETE' });
+        alert('Cache cleared!');
+    });
+
+    // Initialize
+    updateChart();
+    fetchCacheStats();
+</script>
+</body>
+</html>
